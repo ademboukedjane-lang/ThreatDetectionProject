@@ -46,7 +46,7 @@ public class IpHostRule implements Rule{
 			}
 		}
 		
-		return false;
+		return true;
 	}
 
 }

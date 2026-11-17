@@ -84,9 +84,10 @@ public class MainWindow extends JFrame {
         InputType type = (InputType) typeBox.getSelectedItem();
         String text = inputField.getText();
         try {
-            InputValidator.validate(type, text);   // adapt if the name differs
-            addItem(type, text.trim());
-            inputField.setText("");
+            InputValidator.validate(new ScanItem(0, type, text));
+            addItem(type,text);// adapt if the name differs
+            
+            inputField.setText(" ");
             showError(" ");
         } catch (InvalidInputException ex) {
             showError(ex.getMessage());
