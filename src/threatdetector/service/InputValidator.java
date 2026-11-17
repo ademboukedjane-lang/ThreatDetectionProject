@@ -8,7 +8,7 @@ import threatdetector.model.ScanItem;
 
 public class InputValidator {
 
-    public static void validate(ScanItem. item) throws InvalidInputException {
+    public static void validate(ScanItem item) throws InvalidInputException {
         String text = item.getContent().trim();
 
         if (text.isEmpty()) {

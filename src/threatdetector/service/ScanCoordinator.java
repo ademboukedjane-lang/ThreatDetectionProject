@@ -1,61 +1,56 @@
 package threatdetector.service;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.atomic.AtomicInteger;
+
 import threatdetector.model.ScanItem;
 import threatdetector.model.ScanResult;
- 
+
 public class ScanCoordinator {
 
     private ThreatAnalyze analyzer;
-    private ExecutorService pool;
+
+    private boolean cancelled = false;
 
     public ScanCoordinator(ThreatAnalyze analyzer) {
         this.analyzer = analyzer;
-        this.pool = Executors.newFixedThreadPool(4); 
     }
 
-    public synchronized void submitAll(List<ScanItem> items, final ScanListener listener) {
-        if (pool.isShutdown()) {
-            pool = Executors.newFixedThreadPool(4);
-        }
+    public void submitAll(List<ScanItem> items, ScanListener listener) {
 
-        final int total = items.size();        final AtomicInteger done = new AtomicInteger(0);
+        cancelled = false;
 
-        for (final ScanItem item : items) {
-            try {
-                pool.submit(new Runnable() {
-                    public void run() {
-                        listener.onStarted(item);
+        int total = items.size();
+        int done = 0;
 
-                        ScanResult result;
-                        try {
-                            result = analyzer.analyze(item);
-                        } catch (Exception e) {
-                            result = ScanResult.notVerified(item, "Unexpected error");
-                        }
+        for (ScanItem item : items) {
 
-                        if (Thread.currentThread().isInterrupted()) {
-                            return; 
-                        }
-                        listener.onFinished(result);
-                        listener.onProgress(done.incrementAndGet(), total);
-                    }
-                });
-            } catch (RejectedExecutionException e) {
-                return;
+            if (cancelled) {
+                break;
             }
+
+            listener.onStarted(item);
+
+            ScanResult result;
+
+            try {
+                result = analyzer.analyze(item);
+
+            } catch (Exception e) {
+                result = ScanResult.notVerified(item, "Unexpected error");
+            }
+
+            listener.onFinished(result);
+
+            done++;
+          listener.onProgress(done, total);
         }
     }
 
-    public synchronized void cancel() {
-        pool.shutdownNow();
+    public void cancel() {
+        cancelled = true;
     }
 
-    public synchronized void shutdown() {
-        pool.shutdownNow();
+    public void shutdown() {
+        cancelled = true;
     }
 }
