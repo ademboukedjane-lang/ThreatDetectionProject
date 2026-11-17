@@ -23,7 +23,7 @@ public class MainWindow extends JFrame {
     private final JLabel errorLabel = new JLabel(" ");
 
     // If the real constructor needs an analyzer: new ScanCoordinator(new RuleBasedAnalyzer())
-    private final ScanCoordinator coordinator = new ScanCoordinator();
+    private final ScanCoordinator coordinator = new ScanCoordinator(new RuleBasedAnalyzer());
     private final CsvParserService csvParser = new CsvParserService();
     private final List<ScanItem> pending = new ArrayList<>();
     private final AtomicInteger idGen = new AtomicInteger(1);
@@ -97,15 +97,15 @@ public class MainWindow extends JFrame {
         JFileChooser fc = new JFileChooser();
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try {
-            ParseReport rep = csvParser.parse(fc.getSelectedFile()); // adapt if needed
-            for (ScanItem it : rep.getItems()) {
+            threatdetector.service.CsvParserService.ParseReport rep = csvParser.parse(fc.getSelectedFile()); // adapt if needed
+            for (ScanItem it : rep.items) {
             	addItem(it.getType(), it.getContent());
             }
-            if (rep.getErrors().isEmpty()) {
+            if (rep.errors.isEmpty()) {
                 showError(" ");
             } else {
-                showError(rep.getErrors().size() + " row(s) skipped. First: "
-                        + rep.getErrors().get(0));
+                showError(rep.errors.size() + " row(s) skipped. First: "
+                        + rep.errors.get(0));
             }
         } catch (Exception ex) {
             showError("Cannot load CSV: " + ex.getMessage());
@@ -147,7 +147,7 @@ public class MainWindow extends JFrame {
                     done++;
                     globalBar.setValue(done);
                     globalBar.setString(done + "/" + total);
-                    if (done == total) setBusy(false);
+                    if (done == total) { setBusy(false);}
                 });
             }
         });
