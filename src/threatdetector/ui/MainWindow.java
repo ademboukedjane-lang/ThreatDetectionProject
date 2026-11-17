@@ -12,10 +12,7 @@ import threatdetector.service.*;
 
 public class MainWindow extends JFrame {
 
-    private final JTextField inputField = new JTextField();
-    private final JComboBox<InputType> typeBox = new JComboBox<>(InputType.values());
-    private final JButton addBtn = new JButton("Add");
-    private final JButton csvBtn = new JButton("Load CSV...");
+    private final InputPanel inputPanel = new InputPanel();
     private final JButton scanBtn = new JButton("Scan");
     private final JButton clearBtn = new JButton("Clear");
     private final ResultsTable table = new ResultsTable();
@@ -45,15 +42,6 @@ public class MainWindow extends JFrame {
     }
 
     private void buildLayout() {
-        JPanel top = new JPanel(new BorderLayout(6, 6));
-        top.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
-        top.add(typeBox, BorderLayout.WEST);
-        top.add(inputField, BorderLayout.CENTER);
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        right.add(addBtn);
-        right.add(csvBtn);
-        top.add(right, BorderLayout.EAST);
-
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT));
         buttons.add(scanBtn);
         buttons.add(clearBtn);
@@ -67,26 +55,25 @@ public class MainWindow extends JFrame {
         bottom.add(globalBar);
         bottom.add(errorLabel);
 
-        add(top, BorderLayout.NORTH);
+        add(inputPanel, BorderLayout.NORTH);
         add(table, BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
     }
 
     private void wireActions() {
-        addBtn.addActionListener(e -> onAdd());
-        inputField.addActionListener(e -> onAdd());
-        csvBtn.addActionListener(e -> onLoadCsv());
+        inputPanel.onAdd(e -> onAdd());
+        inputPanel.onLoadCsv(e -> onLoadCsv());
         scanBtn.addActionListener(e -> onScan());
         clearBtn.addActionListener(e -> onClear());
     }
 
     private void onAdd() {
-        InputType type = (InputType) typeBox.getSelectedItem();
-        String text = inputField.getText();
+        InputType type = inputPanel.getSelectedType();
+        String text = inputPanel.getText();
         try {
             InputValidator.validate(type, text);   // adapt if the name differs
             addItem(type, text.trim());
-            inputField.setText("");
+            inputPanel.clearText();
             showError(" ");
         } catch (InvalidInputException ex) {
             showError(ex.getMessage());
@@ -99,7 +86,7 @@ public class MainWindow extends JFrame {
         try {
             ParseReport rep = csvParser.parse(fc.getSelectedFile()); // adapt if needed
             for (ScanItem it : rep.getItems()) {
-            	addItem(it.getType(), it.getContent());
+                addItem(it.getType(), it.getContent());
             }
             if (rep.getErrors().isEmpty()) {
                 showError(" ");
@@ -119,7 +106,7 @@ public class MainWindow extends JFrame {
     }
 
     private void onScan() {
-        if (pending.isEmpty()) {
+    	if (pending.isEmpty()) {
             showError("Nothing to scan. Add an input or load a CSV first.");
             return;
         }
@@ -165,13 +152,12 @@ public class MainWindow extends JFrame {
 
     private void setBusy(boolean busy) {
         scanBtn.setEnabled(!busy);
-        addBtn.setEnabled(!busy);
-        csvBtn.setEnabled(!busy);
         clearBtn.setEnabled(!busy);
+        inputPanel.setInputEnabled(!busy);
     }
 
     private void showError(String msg) {
         errorLabel.setText(msg);
     }
 }
-            }
+    
