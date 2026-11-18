@@ -22,7 +22,6 @@ public class MainWindow extends JFrame {
     private final JProgressBar globalBar = new JProgressBar(0, 100);
     private final JLabel errorLabel = new JLabel(" ");
 
-    // If the real constructor needs an analyzer: new ScanCoordinator(new RuleBasedAnalyzer())
     private final ScanCoordinator coordinator = new ScanCoordinator(new RuleBasedAnalyzer());
     private final CsvParserService csvParser = new CsvParserService();
     private final List<ScanItem> pending = new ArrayList<>();
@@ -82,12 +81,11 @@ public class MainWindow extends JFrame {
 
     private void onAdd() {
         InputType type = (InputType) typeBox.getSelectedItem();
-        String text = inputField.getText();
+        String text = inputField.getText().trim();
         try {
             InputValidator.validate(new ScanItem(0, type, text));
-            addItem(type,text);// adapt if the name differs
-            
-            inputField.setText(" ");
+            addItem(type, text);
+            inputField.setText("");
             showError(" ");
         } catch (InvalidInputException ex) {
             showError(ex.getMessage());
@@ -98,12 +96,12 @@ public class MainWindow extends JFrame {
         JFileChooser fc = new JFileChooser();
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
         try {
-            threatdetector.service.CsvParserService.ParseReport rep = csvParser.parse(fc.getSelectedFile()); // adapt if needed
+        	threatdetector.service.CsvParserService.ParseReport rep = csvParser.parse(fc.getSelectedFile());
             for (ScanItem it : rep.items) {
-            	addItem(it.getType(), it.getContent());
+                addItem(it.getType(), it.getContent());
             }
             if (rep.errors.isEmpty()) {
-                showError(" ");
+            	showError(" ");
             } else {
                 showError(rep.errors.size() + " row(s) skipped. First: "
                         + rep.errors.get(0));
@@ -134,7 +132,7 @@ public class MainWindow extends JFrame {
         globalBar.setString("0/" + total);
         setBusy(true);
 
-        // The ONLY place that talks to ScanCoordinator. Adapt here if its API differs.
+        // The only place that talks to ScanCoordinator.
         coordinator.submitAll(batch, new ScanListener() {
             @Override
             public void onStarted(ScanItem item) {
@@ -148,8 +146,13 @@ public class MainWindow extends JFrame {
                     done++;
                     globalBar.setValue(done);
                     globalBar.setString(done + "/" + total);
-                    if (done == total) { setBusy(false);}
+                    if (done == total) { setBusy(false); }
                 });
+            }
+
+            @Override
+            public void onProgress(int doneCount, int totalCount) {
+                // The global bar is already updated in onFinished (UI thread).
             }
         });
     }
@@ -174,5 +177,5 @@ public class MainWindow extends JFrame {
     private void showError(String msg) {
         errorLabel.setText(msg);
     }
-}
-            
+
+            }
