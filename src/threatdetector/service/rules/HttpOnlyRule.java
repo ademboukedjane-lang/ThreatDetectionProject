@@ -16,7 +16,7 @@ public class HttpOnlyRule implements Rule {
 	public  RuleHit evaluate(ScanItem item) {
 		String content = item.getContent().trim();
 		if(content.toLowerCase(Locale.ROOT).startsWith("http://")) {
-			return new RuleHit(20 , "URL uses HTTP instead of https");
+			return new RuleHit(30 , "URL uses HTTP instead of https");
 		}
 		return RuleHit.none();
 	}
