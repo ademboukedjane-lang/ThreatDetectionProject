@@ -1,5 +1,6 @@
 package threatdetector.service;
 
+
 import threatdetector.model.ScanItem;
 import threatdetector.model.ScanResult;
 
@@ -8,3 +9,5 @@ public interface ScanListener {
     void onFinished(ScanResult result);
     void onProgress(int done, int total);
 }
+
+
