@@ -1,7 +1,9 @@
 package threatdetector.service;
 
+import java.io.File;
 import java.util.List;
 
+import threatdetector.model.InputType;
 import threatdetector.model.ScanItem;
 import threatdetector.model.ScanResult;
 
@@ -53,4 +55,6 @@ public class ScanCoordinator {
     public void shutdown() {
         cancelled = true;
     }
+
+	
 }
