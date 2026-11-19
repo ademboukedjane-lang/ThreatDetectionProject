@@ -1,8 +1,12 @@
 package threatdetector.service;
 
+
 import java.util.ArrayList;
 import java.util.List;
 import threatdetector.model.ScanItem;
+
+
+
 
 public class ParseReport {
     
@@ -14,4 +18,6 @@ public class ParseReport {
         this.items = new ArrayList<>();
         this.errors = new ArrayList<>();
     }
-}
+    }
+
+
