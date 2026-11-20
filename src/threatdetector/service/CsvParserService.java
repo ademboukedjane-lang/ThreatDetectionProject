@@ -206,7 +206,7 @@ public class CsvParserService {
         if (inQuotes) {
             report.errors.add("Line " + startLine + ": quote was never closed");
         }
-        if (cur.length() > 0 || !fields.isEmpty()) {
+        else if (cur.length() > 0 || !fields.isEmpty()) {
             fields.add(cur.toString());
             out.add(new Rec(startLine, fields));
         }

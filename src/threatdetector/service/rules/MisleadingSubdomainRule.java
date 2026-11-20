@@ -40,8 +40,8 @@ public class MisleadingSubdomainRule implements Rule {
 	            	};
 
 	            
-	            if (parts.length >= 5) {
-	                return new RuleHit(25,
+	            if (parts.length >= 4 && ! parts[0].equals("WWW")) {
+	                return new RuleHit(30,
 	                        "URL contains many subdomains");
 	            }
 
@@ -51,7 +51,7 @@ public class MisleadingSubdomainRule implements Rule {
 	                for (String brand : brands) {
 
 	                    if (parts[i].contains(brand)) {
-	                        return new RuleHit(25,
+	                        return new RuleHit(30,
 	                                "Known brand name used in a suspicious subdomain");
 	                    }
 	                }
