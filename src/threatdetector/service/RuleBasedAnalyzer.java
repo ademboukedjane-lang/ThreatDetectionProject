@@ -11,8 +11,13 @@ import threatdetector.model.RuleHit;
 import threatdetector.service.rules.HttpOnlyRule;
 import threatdetector.service.rules.IpHostRule;
 import threatdetector.service.rules.MisleadingSubdomainRule;
+import threatdetector.service.rules.SuspensionThreatRule;
 import threatdetector.service.rules.UrgencyLanguageRule;
+import threatdetector.service.rules.AccountNotificationRule;
+import threatdetector.service.rules.AtSymbolRule;
 import threatdetector.service.rules.CredentialRequestRule;
+import threatdetector.service.rules.EmbeddedIpUrlRule;
+
 
 public class RuleBasedAnalyzer implements ThreatAnalyze {
 
@@ -25,7 +30,11 @@ public class RuleBasedAnalyzer implements ThreatAnalyze {
             new IpHostRule(),
             new MisleadingSubdomainRule(),
             new UrgencyLanguageRule(),
-            new CredentialRequestRule()
+            new CredentialRequestRule(),
+            new AtSymbolRule(),
+            new EmbeddedIpUrlRule(),
+            new SuspensionThreatRule(),
+            new AccountNotificationRule()
         );
     }
 
@@ -34,6 +43,13 @@ public class RuleBasedAnalyzer implements ThreatAnalyze {
 
         if (item == null) {
             throw new IllegalArgumentException("Item cannot be null");
+        }
+        if (item.getType() == null) {
+            return ScanResult.notVerified(item, "Input type is missing");
+        }
+
+        if (item.getContent() == null || item.getContent().trim().isEmpty()) {
+            return ScanResult.notVerified(item, "Input content is empty");
         }
 
         int score = 0;
@@ -64,10 +80,7 @@ public class RuleBasedAnalyzer implements ThreatAnalyze {
 
         } catch (RuntimeException e) {
 
-            return ScanResult.notVerified(
-                item,
-                "Analysis failed: " + e.getMessage()
-            );
+            return ScanResult.notVerified( item,"Analysis failed: " + e.getMessage());
         }
     }
 }

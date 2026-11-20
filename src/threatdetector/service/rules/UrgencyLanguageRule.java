@@ -16,7 +16,11 @@ public class UrgencyLanguageRule implements Rule {
 	public RuleHit evaluate(ScanItem item) {
 		String content = item.getContent().toLowerCase(Locale.ROOT);
 		String[] urgentWords =	{"urgent","immediately","urgently", "now","عاجل", "عاجلا", "فورا","فوراً",
-				"حالا","حالاً","بسرعة","الآن", "الان"
+				"حالا","حالاً","بسرعة","الآن", "الان","within 24 hours",
+				"24 hours",
+				"required",
+				"prevent suspension",
+				"account suspension"
 	           
 	        };
 		for(String word : urgentWords) {
