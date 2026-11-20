@@ -47,7 +47,7 @@ public class MainPanel extends JPanel {
     private final ActivityLogPanel log = new ActivityLogPanel();
     private final SummaryPanel summary = new SummaryPanel();
 
-    private final AnimatedBackground background = new AnimatedBackground(this);
+  //  private final AnimatedBackground background = new AnimatedBackground(this);
 
     private int active;   // items queued or running (Swing thread only)
 
@@ -133,7 +133,6 @@ public class MainPanel extends JPanel {
         workers.setIconTextGap(10);
         workers.setFont(Theme.font(Font.PLAIN, 15));
         workers.setForeground(Theme.TEXT);
-
         pill.add(workers, BorderLayout.CENTER);
         JPanel pillWrap = new JPanel(new GridBagLayout());
         pillWrap.setOpaque(false);
@@ -216,8 +215,6 @@ public class MainPanel extends JPanel {
     }
 
     // ================= CSV LOADING =================
-
-    /** Adds every usable row of the file to the table (as Pending). Nothing is scanned yet. */
     public void loadCsv(File file) {
 
         input.setError(null, false);
@@ -313,7 +310,6 @@ public class MainPanel extends JPanel {
 
     // ================= SCAN ALL =================
 
-    /** Scans every row that is still Pending (typed text, if any, is added first). */
     private void onScan() {
 
         input.setError(null, false);
@@ -350,8 +346,7 @@ public class MainPanel extends JPanel {
     // ================= SCAN ONE ROW =================
 
     private void onRowScan(ScanItem item) {
-
-        results.resetRow(item);
+    	results.resetRow(item);
         summary.update(results.counts());
 
         startScan(Collections.singletonList(item));
@@ -486,19 +481,20 @@ public class MainPanel extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = Theme.aa(g);
-        background.paint(g2, getWidth(), getHeight());
+  //      background.paint(g2, getWidth(), getHeight());
         g2.dispose();
     }
 
     @Override
     public void addNotify() {
         super.addNotify();
-        background.start();
+    //    background.start();
     }
 
     @Override
     public void removeNotify() {
-        background.stop();
+      //  background.stop();
         super.removeNotify();
     }
 }
+    
