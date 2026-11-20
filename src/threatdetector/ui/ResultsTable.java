@@ -4,22 +4,28 @@ import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
+import javax.swing.ButtonGroup;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JToggleButton;
+import javax.swing.RowFilter;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
@@ -27,6 +33,7 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableRowSorter;
 
 import threatdetector.model.InputType;
 import threatdetector.model.RiskLevel;
@@ -37,14 +44,22 @@ import threatdetector.model.ScanStatus;
 public class ResultsTable extends RoundedPanel {
 
     private static final String[] COLUMNS = {
-        "#", "Input", "Type", "Risk Level", "Status", "Reasons"
+        "#", "Input", "Type", "Risk Level", "Status", "Reasons", "Action"
     };
+
+    private static final int ACTION_COL = 6;
 
     private final Model model = new Model();
     private final JTable table;
     private final JLabel counter = new JLabel("0 / 0");
     private final GlobalBar globalBar = new GlobalBar();
     private final GlowButton clearButton = new GlowButton("Clear", false);
+
+    private TableRowSorter<Model> sorter;
+    private RiskLevel filterLevel = null;   // null = show all
+    private Chip[] chips;
+    private Runnable clearListener = () -> {};
+    private Consumer<ScanItem> rowScanListener = i -> {};
 
     public ResultsTable() {
         super(new BorderLayout(0, 8), Theme.PANEL, Theme.BORDER, 18);
@@ -72,7 +87,11 @@ public class ResultsTable extends RoundedPanel {
         head.setOpaque(false);
         head.add(title, BorderLayout.WEST);
         head.add(right, BorderLayout.EAST);
-        add(head, BorderLayout.NORTH);
+        JPanel top = new JPanel(new BorderLayout(0, 8));
+        top.setOpaque(false);
+        top.add(head, BorderLayout.NORTH);
+        top.add(buildFilters(), BorderLayout.CENTER);
+        add(top, BorderLayout.NORTH);
 
         table = new JTable(model) {
             @Override
@@ -84,7 +103,7 @@ public class ResultsTable extends RoundedPanel {
                     return null;
                 }
 
-                Row row = model.rows.get(r);
+                Row row = model.rows.get(convertRowIndexToModel(r));
 
                 String text = c == 1
                         ? row.item.getContent()
@@ -104,12 +123,42 @@ public class ResultsTable extends RoundedPanel {
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setFocusable(false);
 
+        sorter = new TableRowSorter<>(model);
+        for (int i = 0; i < COLUMNS.length; i++) {
+            sorter.setSortable(i, false);   // filtering only, no sorting
+        }
+        sorter.setSortsOnUpdates(true);     // re-filter when a result arrives
+        table.setRowSorter(sorter);
+
+        // click on the "Scan" button of a row
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int vr = table.rowAtPoint(e.getPoint());
+                int vc = table.columnAtPoint(e.getPoint());
+                if (vr < 0 || vc != ACTION_COL) return;
+
+                Row r = model.rows.get(table.convertRowIndexToModel(vr));
+                if (r.queued || r.status == ScanStatus.RUNNING) return;
+
+                rowScanListener.accept(r.item);
+            }
+        });
+        table.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int vc = table.columnAtPoint(e.getPoint());
+                table.setCursor(Cursor.getPredefinedCursor(
+                        vc == ACTION_COL ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+            }
+        });
+
         table.setDefaultRenderer(Object.class, new CellRenderer());
         table.getTableHeader().setDefaultRenderer(new HeaderRenderer());
         table.getTableHeader().setReorderingAllowed(false);
         table.getTableHeader().setPreferredSize(new Dimension(0, 38));
 
-        int[] widths = {44, 270, 100, 140, 150, 380};
+        int[] widths = {44, 250, 90, 165, 140, 300, 96};
 
         for (int i = 0; i < widths.length; i++) {
             TableColumn col = table.getColumnModel().getColumn(i);
@@ -128,6 +177,8 @@ public class ResultsTable extends RoundedPanel {
         scroll.setBorder(javax.swing.BorderFactory.createLineBorder(Theme.BORDER));
 
         add(scroll, BorderLayout.CENTER);
+
+        updateChipCounts();
     }
 
     // ================= API =================
@@ -143,9 +194,11 @@ public class ResultsTable extends RoundedPanel {
         int last = model.rows.size() - 1;
         model.fireTableRowsInserted(last, last);
 
-        table.scrollRectToVisible(
-                table.getCellRect(last, 0, true)
-        );
+        int viewRow = table.convertRowIndexToView(last);
+        if (viewRow >= 0) {
+            table.scrollRectToVisible(table.getCellRect(viewRow, 0, true));
+        }
+        updateChipCounts();
     }
 
     public void markRunning(ScanItem item) {
@@ -173,10 +226,49 @@ public class ResultsTable extends RoundedPanel {
         if (r == null) return;
 
         r.result = result;
+        r.queued = false;
         r.status = result.getStatus();
         r.progress = 100;
 
         refresh(result.getItem());
+        updateChipCounts();
+    }
+
+    public void onRowScan(Consumer<ScanItem> c) {
+        rowScanListener = c == null ? i -> {} : c;
+    }
+
+    /** Rows that were added but never scanned. */
+    public List<ScanItem> pendingItems() {
+        List<ScanItem> list = new ArrayList<>();
+        for (Row r : model.rows) {
+            if (r.result == null && !r.queued && r.status == ScanStatus.PENDING) {
+                list.add(r.item);
+            }
+        }
+        return list;
+    }
+
+    public void markQueued(ScanItem item) {
+        Row r = find(item);
+        if (r == null) return;
+
+        r.queued = true;
+        refresh(item);
+    }
+
+    /** Puts a finished row back to "Pending" so it can be scanned again. */
+    public void resetRow(ScanItem item) {
+        Row r = find(item);
+        if (r == null) return;
+
+        r.result = null;
+        r.status = ScanStatus.PENDING;
+        r.progress = 0;
+        r.queued = false;
+
+        refresh(item);
+        updateChipCounts();
     }
 
     public void clear() {
@@ -185,6 +277,22 @@ public class ResultsTable extends RoundedPanel {
 
         model.fireTableDataChanged();
         setBatchProgress(0, 0);
+
+        filterLevel = null;
+        applyFilter();
+        if (chips != null) {
+            chips[0].setSelected(true);
+        }
+        updateChipCounts();
+        clearListener.run();
+    }
+
+    public void onClear(Runnable r) {
+        clearListener = r == null ? () -> {} : r;
+    }
+
+    public void setClearEnabled(boolean enabled) {
+        clearButton.setEnabled(enabled);
     }
 
     public int[] counts() {
@@ -227,6 +335,114 @@ public class ResultsTable extends RoundedPanel {
                 : Math.max(0, Math.min(100, done * 100 / total));
 
         globalBar.setValue(value);
+    }
+
+    // ================= FILTER =================
+
+    private JPanel buildFilters() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        p.setOpaque(false);
+
+        JLabel label = new JLabel("Filter:");
+        label.setFont(Theme.font(Font.PLAIN, 14));
+        label.setForeground(Theme.MUTED);
+        p.add(label);
+
+        chips = new Chip[] {
+            new Chip("All", Theme.ACCENT, null),
+            new Chip("Low", Theme.OK, RiskLevel.LOW),
+            new Chip("Medium", Theme.WARN, RiskLevel.MEDIUM),
+            new Chip("High", Theme.DANGER, RiskLevel.HIGH),
+            new Chip("Not Verified", Theme.UNKNOWN, RiskLevel.NOT_VERIFIED)
+        };
+
+        ButtonGroup group = new ButtonGroup();
+        for (Chip c : chips) {
+            group.add(c);
+            p.add(c);
+        }
+        chips[0].setSelected(true);
+
+        return p;
+    }
+
+    private void applyFilter() {
+        if (sorter == null) return;
+
+        if (filterLevel == null) {
+            sorter.setRowFilter(null);
+            return;
+        }
+
+        final RiskLevel wanted = filterLevel;
+
+        sorter.setRowFilter(new RowFilter<Model, Integer>() {
+            @Override
+            public boolean include(Entry<? extends Model, ? extends Integer> entry) {
+                Row r = (Row) entry.getValue(0);
+                return r.result != null && r.result.getLevel() == wanted;
+            }
+        });
+    }
+
+    private void updateChipCounts() {
+        if (chips == null) return;
+
+        int[] c = counts();
+
+        chips[0].setCount(model.rows.size());
+        chips[1].setCount(c[0]);
+        chips[2].setCount(c[1]);
+        chips[3].setCount(c[2]);
+        chips[4].setCount(c[3]);
+    }
+
+    private final class Chip extends JToggleButton {
+
+        private final String name;
+        private final Color color;
+
+        Chip(String name, Color color, RiskLevel level) {
+            super(name);
+            this.name = name;
+            this.color = color;
+
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setFont(Theme.font(Font.BOLD, 13));
+            setForeground(Color.WHITE);
+            setBorder(Theme.pad(5, 14, 5, 14));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            addActionListener(e -> {
+                filterLevel = level;
+                applyFilter();
+            });
+        }
+
+        void setCount(int n) {
+            setText(name + "  " + n);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = Theme.aa(g);
+            int w = getWidth() - 1, h = getHeight() - 1;
+
+            if (isSelected()) {
+                g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 90));
+            } else {
+                g2.setColor(new Color(10, 36, 90));
+            }
+            g2.fillRoundRect(0, 0, w, h, h, h);
+
+            g2.setColor(isSelected() ? color : Theme.BORDER);
+            g2.drawRoundRect(0, 0, w, h, h, h);
+
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 
     // ================= INTERNALS =================
@@ -272,6 +488,7 @@ public class ResultsTable extends RoundedPanel {
 
         ScanResult result;
         ScanStatus status = ScanStatus.PENDING;
+        boolean queued;
         int progress;
 
         Row(ScanItem item) {
@@ -363,6 +580,7 @@ public class ResultsTable extends RoundedPanel {
 
         private final PillCell pill = new PillCell();
         private final StatusCell status = new StatusCell();
+        private final ActionCell action = new ActionCell();
 
         @Override
         public Component getTableCellRendererComponent(
@@ -385,6 +603,12 @@ public class ResultsTable extends RoundedPanel {
 
                 pill.set(bg, level);
                 return pill;
+            }
+
+            // Action column
+            if (col == ACTION_COL) {
+                action.set(bg, r);
+                return action;
             }
 
             // Status column
@@ -491,7 +715,7 @@ public class ResultsTable extends RoundedPanel {
 
             FontMetrics fm = g2.getFontMetrics();
 
-            String label = level.name();
+            String label = level.name().replace('_', ' ');
 
             int w = fm.stringWidth(label) + 32;
             int h = 28;
@@ -630,6 +854,43 @@ public class ResultsTable extends RoundedPanel {
                     );
                 }
             }
+        }
+    }
+
+    // ================= ACTION CELL =================
+
+    private static final class ActionCell extends CellBase {
+
+        private String label = "Scan";
+        private boolean enabled = true;
+
+        void set(Color bg, Row r) {
+            this.bg = bg;
+
+            boolean busy = r.queued || r.status == ScanStatus.RUNNING;
+            enabled = !busy;
+            label = busy ? "..." : (r.result == null ? "Scan" : "Re-scan");
+        }
+
+        @Override
+        void paintCell(Graphics2D g2) {
+            int w = 78, h = 28;
+            int x = (getWidth() - w) / 2;
+            int y = (getHeight() - h) / 2;
+
+            g2.setColor(enabled ? new Color(20, 110, 230) : new Color(30, 55, 100));
+            g2.fillRoundRect(x, y, w, h, 14, 14);
+
+            g2.setColor(enabled ? new Color(120, 190, 255) : Theme.BORDER);
+            g2.drawRoundRect(x, y, w, h, 14, 14);
+
+            g2.setFont(Theme.font(Font.BOLD, 13));
+            FontMetrics fm = g2.getFontMetrics();
+
+            g2.setColor(enabled ? Color.WHITE : Theme.MUTED);
+            g2.drawString(label,
+                    x + (w - fm.stringWidth(label)) / 2,
+                    y + (h + fm.getAscent()) / 2 - 2);
         }
     }
 

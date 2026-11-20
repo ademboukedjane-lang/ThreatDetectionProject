@@ -18,7 +18,7 @@ public class IpHostRule implements Rule{
 			URI uri = URI.create(content);
 			String host = uri.getHost();
 			if(isIPv4(host)) {
-				return new RuleHit(60 , "URL uses IP adderqq insted of a domain name");
+				return new RuleHit(30 , "URL uses IP adderqq insted of a domain name");
 			}
 		} catch (IllegalArgumentException e) {
 			return RuleHit.none();

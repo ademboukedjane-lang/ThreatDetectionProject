@@ -7,14 +7,13 @@ import threatdetector.model.InputType;
 import threatdetector.model.ScanItem;
 import threatdetector.model.ScanResult;
 
-import threatdetector.service.InputValidator;
 import threatdetector.service.CsvParserService;
+import threatdetector.service.ParseReport;
 import threatdetector.service.ScanCoordinator;
 import threatdetector.service.ScanListener;
 
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -23,12 +22,15 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,7 +47,9 @@ public class MainPanel extends JPanel {
     private final ActivityLogPanel log = new ActivityLogPanel();
     private final SummaryPanel summary = new SummaryPanel();
 
-    private List<ScanItem> loadedCsv;
+    private final AnimatedBackground background = new AnimatedBackground(this);
+
+    private int active;   // items queued or running (Swing thread only)
 
     private int batchTotal;
     private int batchDone;
@@ -60,8 +64,6 @@ public class MainPanel extends JPanel {
         this.workerCount = workerCount;
 
         setBackground(Theme.BG);
-
-        add(new SidebarPanel(this::onNavigate), BorderLayout.WEST);
 
         JPanel content = new JPanel(new BorderLayout(0, 12));
         content.setOpaque(false);
@@ -82,14 +84,12 @@ public class MainPanel extends JPanel {
 
         input.onScan(this::onScan);
         input.onBrowse(this::onBrowse);
+        input.onAdd(this::onAdd);
+        results.onRowScan(this::onRowScan);
+        results.onClear(() -> summary.update(new int[4]));
 
-        input.onModeChange(mode -> {
-            if (mode != InputPanel.Mode.CSV) {
-                loadedCsv = null;
-            }
-        });
 
-        log.log("Ready. " + workerCount + " worker thread(s).");
+        log.log("Ready. " + workerCount + " VEYTRIX(s).");
     }
 
     // ================= HEADER =================
@@ -97,8 +97,8 @@ public class MainPanel extends JPanel {
     private JPanel buildHeader() {
 
         JLabel title = new JLabel(
-                "<html><span style='color:#FFFFFF'>Multi-Threaded </span>"
-                + "<span style='color:#22D3EE'>Threat Detector</span></html>");
+                "<html><span style='color:#FFFFFF'>ThreatGuard- </span>"
+                + "<span style='color:#22D3EE'>SMART THREAT DETECTION</span></html>");
 
         title.setFont(Theme.font(Font.BOLD, 32));
 
@@ -124,7 +124,7 @@ public class MainPanel extends JPanel {
         pill.setBorder(Theme.pad(8, 18, 8, 18));
 
         JLabel workers = new JLabel(
-                workerCount + " Worker Threads",
+                workerCount + " VEYTRIX",
                 new Icons.Dot(Theme.OK),
                 JLabel.LEFT
         );
@@ -142,7 +142,15 @@ public class MainPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        header.add(text, BorderLayout.WEST);
+        JLabel logo = new JLabel(new Icons.Shield(52, 62, true));
+        logo.setBorder(Theme.pad(0, 0, 0, 14));
+
+        JPanel left = new JPanel(new BorderLayout());
+        left.setOpaque(false);
+        left.add(logo, BorderLayout.WEST);
+        left.add(text, BorderLayout.CENTER);
+
+        header.add(left, BorderLayout.WEST);
         header.add(pillWrap, BorderLayout.EAST);
 
         return header;
@@ -178,300 +186,199 @@ public class MainPanel extends JPanel {
         return bottom;
     }
 
-    // ================= NAVIGATION =================
-
-    private void onNavigate(Icons.Nav nav) {
-
-        switch (nav) {
-
-            case ABOUT:
-
-                JOptionPane.showMessageDialog(
-                        this,
-                        "Multi-Threaded Threat Detector\n"
-                        + "Concurrency Programming mini-project\n"
-                        + "Scans URLs and messages and reports a risk level.",
-                        "About",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
-
-                break;
-
-            case HISTORY:
-
-                JOptionPane.showMessageDialog(
-                        this,
-                        "History page will be added later.",
-                        "History",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
-
-                break;
-
-            case SETTINGS:
-
-                JOptionPane.showMessageDialog(
-                        this,
-                        "Settings page will be added later.",
-                        "Settings",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
-
-                break;
-
-            default:
-                break;
-        }
-    }
-
     // ================= CSV BROWSE =================
+
+    private static File lastDir = null;
 
     private void onBrowse() {
 
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = new JFileChooser(lastDir);
 
-        chooser.setDialogTitle("Choose a CSV file");
-
+        chooser.setDialogTitle("Choose one or more CSV files");
+        chooser.setMultiSelectionEnabled(true);
         chooser.setFileFilter(
-                new FileNameExtensionFilter("CSV files (*.csv)", "csv")
+                new FileNameExtensionFilter("CSV / text files (*.csv, *.txt)", "csv", "txt")
         );
 
         if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
 
-        loadCsv(chooser.getSelectedFile());
+        File[] files = chooser.getSelectedFiles();
+
+        if (files.length > 0) {
+            lastDir = files[0].getParentFile();
+        }
+
+        for (File f : files) {
+            loadCsv(f);
+        }
     }
 
     // ================= CSV LOADING =================
 
+    /** Adds every usable row of the file to the table (as Pending). Nothing is scanned yet. */
     public void loadCsv(File file) {
 
-        loadedCsv = null;
         input.setError(null, false);
-
-        CsvParserService parser = new CsvParserService();
 
         try {
 
-            CsvParserService.ParseReport report = parser.parse(file);
-
-            List<ScanItem> items = new ArrayList<>();
-            List<String> errors = new ArrayList<>();
-
-            errors.addAll(report.errors);
-
-            // Validate every parsed item
-            for (ScanItem parsedItem : report.items) {
-
-                try {
-
-                    InputValidator.validate(
-                            new ScanItem(
-                                    0,
-                                    parsedItem.getType(),
-                                    parsedItem.getContent()
-                            )
-                    );
-
-                    ScanItem item = new ScanItem(
-                            nextId.incrementAndGet(),
-                            parsedItem.getType(),
-                            parsedItem.getContent()
-                    );
-
-                    items.add(item);
-
-                } catch (InvalidInputException ex) {
-
-                    errors.add(ex.getMessage());
-                }
-            }
+            ParseReport report = new CsvParserService().parse(file);
 
             input.setMode(InputPanel.Mode.CSV);
 
-            if (items.isEmpty()) {
+            for (String error : report.errors) {
+                log.log("CSV skipped: " + error);
+            }
 
-                loadedCsv = null;
-                input.setError(
-                        "No valid rows found in CSV file.",
-                        false
-                );
+            if (report.items.isEmpty()) {
 
-                log.log("CSV loaded but no valid rows found.");
-
-                for (String error : errors) {
-                    log.log("CSV error: " + error);
-                }
-
+                input.setError("No usable rows in " + file.getName(), false);
+                log.log("CSV loaded but no usable rows: " + file.getName());
                 return;
             }
 
-            loadedCsv = items;
-
-            input.showCsvFile(
-                    file.getName()
-                    + "  ("
-                    + items.size()
-                    + " valid rows)"
-            );
-
-            log.log(
-                    "CSV loaded: "
-                    + file.getName()
-                    + " | Valid: "
-                    + items.size()
-                    + " | Invalid: "
-                    + errors.size()
-            );
-
-            for (String error : errors) {
-                log.log("CSV error: " + error);
+            for (ScanItem parsed : report.items) {
+                results.addItem(new ScanItem(
+                        nextId.incrementAndGet(),
+                        parsed.getType(),
+                        parsed.getContent()));
             }
 
-            if (!errors.isEmpty()) {
+            input.showCsvFile(file.getName() + "  (" + report.items.size() + " rows added)");
 
+            log.log("CSV loaded: " + file.getName()
+                    + " | Rows: " + report.items.size()
+                    + " | Skipped: " + report.errors.size());
+
+            if (!report.errors.isEmpty()) {
                 input.setError(
-                        errors.size()
-                        + " invalid row(s) skipped. First: "
-                        + errors.get(0),
-                        true
-                );
+                        report.errors.size() + " row(s) skipped. First: " + report.errors.get(0),
+                        true);
             }
 
         } catch (CsvFormatException ex) {
 
-            loadedCsv = null;
-
-            input.setError(
-                    "CSV format error: " + ex.getMessage(),
-                    false
-            );
-
-            log.log("CSV format error: " + ex.getMessage());
+            input.setError("CSV format error: " + ex.getMessage(), false);
+            log.log("CSV format error (" + file.getName() + "): " + ex.getMessage());
 
         } catch (RuntimeException ex) {
 
-            loadedCsv = null;
-
-            input.setError(
-                    "Cannot load CSV: " + ex.getMessage(),
-                    false
-            );
-
+            input.setError("Cannot load CSV: " + ex.getMessage(), false);
             log.log("CSV loading failed: " + ex);
         }
     }
 
-    // ================= SCAN BUTTON =================
+    // ================= ADD (one item) =================
 
+    private ScanItem readTypedItem() throws InvalidInputException {
+
+        InputPanel.Mode mode = input.getMode();
+
+        if (mode == InputPanel.Mode.CSV) {
+            throw new InvalidInputException("Use Browse CSV to load a file.");
+        }
+
+        String text = input.getText().trim();
+
+        if (text.isEmpty()) {
+            throw new InvalidInputException("Empty input: type a URL or a message first.");
+        }
+
+        InputType type = mode == InputPanel.Mode.URL ? InputType.URL : InputType.MESSAGE;
+
+        return new ScanItem(nextId.incrementAndGet(), type, text);
+    }
+
+    private void onAdd() {
+
+        input.setError(null, false);
+
+        try {
+
+            ScanItem item = readTypedItem();
+
+            results.addItem(item);
+            input.clearField();
+
+            log.log("Added #" + item.getId() + " (" + item.getType() + "): " + shorten(item.getContent()));
+
+        } catch (InvalidInputException ex) {
+
+            input.setError(ex.getMessage(), false);
+            log.log("Rejected input: " + ex.getMessage());
+        }
+    }
+
+    // ================= SCAN ALL =================
+
+    /** Scans every row that is still Pending (typed text, if any, is added first). */
     private void onScan() {
 
         input.setError(null, false);
 
         try {
 
-            List<ScanItem> items;
-
-            InputPanel.Mode mode = input.getMode();
-
-            // -------- CSV MODE --------
-
-            if (mode == InputPanel.Mode.CSV) {
-
-                if (loadedCsv == null || loadedCsv.isEmpty()) {
-
-                    throw new InvalidInputException(
-                            "Choose a valid CSV file first."
-                    );
-                }
-
-                items = new ArrayList<>(loadedCsv);
-
-                loadedCsv = null;
-
+            if (input.getMode() != InputPanel.Mode.CSV && !input.getText().trim().isEmpty()) {
+                ScanItem typed = readTypedItem();
+                results.addItem(typed);
                 input.clearField();
             }
 
-            // -------- URL / MESSAGE MODE --------
+            List<ScanItem> pending = results.pendingItems();
 
-            else {
-
-                InputType type;
-
-                if (mode == InputPanel.Mode.URL) {
-                    type = InputType.URL;
-                } else {
-                    type = InputType.MESSAGE;
-                }
-
-                String text = input.getText().trim();
-
-                ScanItem temporaryItem = new ScanItem(
-                        0,
-                        type,
-                        text
-                );
-
-                InputValidator.validate(temporaryItem);
-
-                ScanItem item = new ScanItem(
-                        nextId.incrementAndGet(),
-                        type,
-                        text
-                );
-
-                items = new ArrayList<>();
-                items.add(item);
-
-                input.clearField();
-            }
-
-            if (items.isEmpty()) {
-
+            if (pending.isEmpty()) {
                 throw new InvalidInputException(
-                        "There is nothing to scan."
-                );
+                        "Empty input: add a URL / message or load a CSV first.");
             }
 
-            startScan(items);
+            startScan(pending);
 
         } catch (InvalidInputException ex) {
 
             input.setError(ex.getMessage(), false);
-
             log.log("Rejected input: " + ex.getMessage());
 
         } catch (RuntimeException ex) {
 
-            input.setError(
-                    "Unexpected error: " + ex.getMessage(),
-                    false
-            );
-
+            input.setError("Unexpected error: " + ex.getMessage(), false);
             log.log("Unexpected error: " + ex);
         }
+    }
+
+    // ================= SCAN ONE ROW =================
+
+    private void onRowScan(ScanItem item) {
+
+        results.resetRow(item);
+        summary.update(results.counts());
+
+        startScan(Collections.singletonList(item));
     }
 
     // ================= START SCAN =================
 
     private void startScan(List<ScanItem> items) {
 
-        batchTotal = items.size();
-        batchDone = 0;
-        for (ScanItem item : items) {
-            results.addItem(item);
+        if (active == 0) {
+            batchTotal = 0;
+            batchDone = 0;
         }
 
-        results.setBatchProgress(0, batchTotal);
+        batchTotal += items.size();
+        active += items.size();
+
+        for (ScanItem item : items) {
+            results.markQueued(item);
+        }
+
+        results.setBatchProgress(batchDone, batchTotal);
 
         input.setScanning(true);
+        results.setClearEnabled(false);
 
-        log.log(
-                "Scan started... ("
-                + batchTotal
-                + (batchTotal == 1 ? " item)" : " items)")
-        );
+        log.log("Scan started... (" + items.size() + (items.size() == 1 ? " item)" : " items)"));
 
         ScanListener listener = new ScanListener() {
 
@@ -514,6 +421,7 @@ public class MainPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
 
                     log.log("Scan failed: " + ex);
+                    active = 0;
 
                     input.setError(
                             "Scan failed: " + ex.getMessage(),
@@ -521,6 +429,7 @@ public class MainPanel extends JPanel {
                     );
 
                     input.setScanning(false);
+            results.setClearEnabled(true);
                 });
             }
 
@@ -537,31 +446,22 @@ public class MainPanel extends JPanel {
         results.updateResult(result);
 
         batchDone++;
+        active--;
 
-        results.setBatchProgress(
-                batchDone,
-                batchTotal
-        );
-
+        results.setBatchProgress(batchDone, batchTotal);
         summary.update(results.counts());
 
-        log.log(
-                "Item #"
-                + result.getItem().getId()
-                + " completed: "
-                + result.getLevel()
-                + " risk"
-        );
+        log.log("Item #" + result.getItem().getId()
+                + " completed: " + result.getLevel() + " risk");
 
-        if (batchDone >= batchTotal) {
+        if (active <= 0) {
+
+            active = 0;
 
             input.setScanning(false);
+            results.setClearEnabled(true);
 
-            log.log(
-                    "Scan finished: "
-                    + batchTotal
-                    + (batchTotal == 1 ? " item." : " items.")
-            );
+            log.log("Scan finished: " + batchDone + (batchDone == 1 ? " item." : " items."));
         }
     }
 
@@ -578,5 +478,27 @@ public class MainPanel extends JPanel {
         }
 
         return text.substring(0, 45) + "...";
+    }
+
+    // ================= ANIMATED BACKGROUND =================
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = Theme.aa(g);
+        background.paint(g2, getWidth(), getHeight());
+        g2.dispose();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        background.start();
+    }
+
+    @Override
+    public void removeNotify() {
+        background.stop();
+        super.removeNotify();
     }
 }

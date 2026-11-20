@@ -28,8 +28,9 @@ public class InputPanel extends RoundedPanel {
 
     private final HintTextField field = new HintTextField();
 
+    private final GlowButton add = new GlowButton("Add", false);
     private final GlowButton browse = new GlowButton("Browse CSV", false);
-    private final GlowButton scan = new GlowButton("Scan", true);
+    private final GlowButton scan = new GlowButton("Scan All", true);
 
     private final JLabel error = new JLabel(" ");
 
@@ -75,13 +76,18 @@ public class InputPanel extends RoundedPanel {
         fieldBox.setPreferredSize(new Dimension(100, 46));
         fieldBox.add(field, BorderLayout.CENTER);
 
-        browse.setPreferredSize(new Dimension(170, 46));
+        browse.setPreferredSize(new Dimension(150, 46));
+        add.setPreferredSize(new Dimension(90, 46));
 
         JPanel fieldRow = new JPanel(new BorderLayout(14, 0));
         fieldRow.setOpaque(false);
 
         fieldRow.add(fieldBox, BorderLayout.CENTER);
-        fieldRow.add(browse, BorderLayout.EAST);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        buttons.setOpaque(false);
+        buttons.add(add);
+        buttons.add(browse);
+        fieldRow.add(buttons, BorderLayout.EAST);
 
         error.setFont(Theme.font(Font.PLAIN, 13));
         error.setForeground(Theme.DANGER);
@@ -122,7 +128,7 @@ public class InputPanel extends RoundedPanel {
         rMsg.addActionListener(e -> applyMode());
         rCsv.addActionListener(e -> applyMode());
 
-        field.addActionListener(e -> scan.doClick());
+        field.addActionListener(e -> add.doClick());
 
         applyMode();
     }
@@ -151,6 +157,7 @@ public class InputPanel extends RoundedPanel {
 
         field.setText("");
         field.setEditable(m != Mode.CSV);
+        add.setEnabled(m != Mode.CSV);
 
         field.setHint(
                 m == Mode.URL
@@ -221,11 +228,15 @@ public class InputPanel extends RoundedPanel {
         scan.setEnabled(!scanning);
         browse.setEnabled(!scanning);
 
-        scan.setText(scanning ? "Scanning..." : "Scan");
+        scan.setText(scanning ? "Scanning..." : "Scan All");
     }
 
     public void onScan(Runnable r) {
         scan.addActionListener(e -> r.run());
+    }
+
+    public void onAdd(Runnable r) {
+        add.addActionListener(e -> r.run());
     }
 
     public void onBrowse(Runnable r) {

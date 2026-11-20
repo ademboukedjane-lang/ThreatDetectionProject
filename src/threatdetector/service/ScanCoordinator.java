@@ -3,6 +3,7 @@ package threatdetector.service;
 import java.io.File;
 import java.util.List;
 
+import threatdetector.exception.InvalidInputException;
 import threatdetector.model.InputType;
 import threatdetector.model.ScanItem;
 import threatdetector.model.ScanResult;
@@ -35,10 +36,13 @@ public class ScanCoordinator {
             ScanResult result;
 
             try {
+            	InputValidator.validate(item);
                 result = analyzer.analyze(item);
 
-            } catch (Exception e) {
-                result = ScanResult.notVerified(item, "Unexpected error");
+            } catch (InvalidInputException e) {
+                result = ScanResult.notVerified(item, e.getMessage());
+            }catch(Exception e){
+            	 result = ScanResult.notVerified(item, "Unexepted error");
             }
 
             listener.onFinished(result);

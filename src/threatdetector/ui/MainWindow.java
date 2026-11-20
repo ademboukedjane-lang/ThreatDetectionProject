@@ -19,19 +19,16 @@ public class MainWindow extends JFrame {
         this.coordinator = coordinator;
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-
         setContentPane(new MainPanel(coordinator, workerCount));
-    }
-        
-        
-          {  setMinimumSize(new Dimension(1050, 720));
+
+        setMinimumSize(new Dimension(1050, 720));
         setSize(1240, 800);
         setLocationRelativeTo(null);
 
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent e) {
-                coordinator.shutdown();
+                MainWindow.this.coordinator.shutdown();
             }
         });
     }
