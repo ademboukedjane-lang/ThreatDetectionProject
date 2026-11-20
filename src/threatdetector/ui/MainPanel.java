@@ -92,13 +92,13 @@ public class MainPanel extends JPanel {
 
         setBackground(Theme.BG);
 
-        JPanel content = new JPanel(new BorderLayout(0, 12));
+        JPanel content = new JPanel(new BorderLayout(0, 6));
         content.setOpaque(false);
-        content.setBorder(Theme.pad(14, 16, 16, 16));
+        content.setBorder(Theme.pad(8, 12, 8, 12));
 
         content.add(buildHeader(), BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new BorderLayout(0, 12));
+        JPanel center = new JPanel(new BorderLayout(0, 6));
         center.setOpaque(false);
 
         center.add(input, BorderLayout.NORTH);
@@ -127,12 +127,12 @@ public class MainPanel extends JPanel {
                 "<html><span style='color:#FFFFFF'>ThreatGuard- </span>"
                 + "<span style='color:#22D3EE'>SMART THREAT DETECTION</span></html>");
 
-        title.setFont(Theme.font(Font.BOLD, 32));
+        title.setFont(Theme.font(Font.BOLD, 26));
 
         JLabel sub = new JLabel(
                 "Scan suspicious URLs and messages for phishing risk, in parallel !");
 
-        sub.setFont(Theme.font(Font.ITALIC, 16));
+        sub.setFont(Theme.font(Font.ITALIC, 14));
         sub.setForeground(new Color(225, 235, 255));
 
         JPanel text = new JPanel(new BorderLayout(0, 2));
@@ -168,7 +168,7 @@ public class MainPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
-        JLabel logo = new JLabel(new Icons.Shield(52, 62, true));
+        JLabel logo = new JLabel(new Icons.Shield(48, 56, true));
         logo.setBorder(Theme.pad(0, 0, 0, 14));
 
         JPanel left = new JPanel(new BorderLayout());
@@ -189,7 +189,7 @@ public class MainPanel extends JPanel {
         JPanel bottom = new JPanel(new GridBagLayout());
 
         bottom.setOpaque(false);
-        bottom.setPreferredSize(new Dimension(0, 190));
+        bottom.setPreferredSize(new Dimension(0, 150));
 
         GridBagConstraints c = new GridBagConstraints();
 

@@ -9,7 +9,7 @@ public enum RiskLevel {
 	   
 	    public static RiskLevel fromScore(int score) {
 	        if (score >= 60) return HIGH;
-	        if (score >= 30) return MEDIUM;
+	        if (score >= 20) return MEDIUM;
 	        return LOW;
 	    }
 }
