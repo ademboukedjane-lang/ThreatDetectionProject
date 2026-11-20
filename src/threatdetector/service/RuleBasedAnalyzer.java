@@ -56,6 +56,9 @@ public class RuleBasedAnalyzer implements ThreatAnalyze {
                     }
                 }
             }
+            if (reasons.isEmpty()) {
+                reasons.add("No suspicious indicators detected (Score: 0)");
+            }
 
             return ScanResult.done(item, score, reasons);
 
